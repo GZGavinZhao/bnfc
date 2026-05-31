@@ -113,6 +113,10 @@ writeFiles root fw = do
       if takeExtension path == ".txt" then
         -- Sign at the end since e.g. txt2tags cannot handle comments at beginning of file.
         unlines [ content, mkComment msgGenerated ]
+      else if null (mkComment "x") then
+        -- The backend declared this file uncommentable (e.g. Lean's
+        -- `lean-toolchain`); emit the raw content with no stamp.
+        content
       else
         -- Sign at the beginning (JFlex cannot handle comments in general, only at beginning).
         mkComment msgGenerated ++ "\n\n" ++ content

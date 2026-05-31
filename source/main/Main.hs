@@ -24,6 +24,7 @@ import BNFC.Backend.Haskell ( makeHaskell )
 import BNFC.Backend.HaskellGADT ( makeHaskellGadt )
 import BNFC.Backend.Java ( makeJava )
 import BNFC.Backend.Latex ( makeLatex )
+import BNFC.Backend.Lean ( makeLean )
 import BNFC.Backend.OCaml ( makeOCaml )
 import BNFC.Backend.Pygments ( makePygments )
 import BNFC.Backend.TreeSitter ( makeTreeSitter )
@@ -86,3 +87,4 @@ maketarget = \case
     TargetPygments     -> makePygments
     TargetCheck        -> error "impossible"
     TargetTreeSitter   -> makeTreeSitter
+    TargetLean         -> makeLean
