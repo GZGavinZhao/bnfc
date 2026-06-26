@@ -19,15 +19,18 @@ and the @parseWith@-based driver.
 
 Scaling: small grammars (calc, stmcalc) elaborate and build in seconds.
 L0-sized grammars (256 productions / 480 SLR(1) states) build in roughly
-15 minutes end-to-end on a recent laptop — the bulk of that is
+20 minutes end-to-end on a recent laptop — the bulk of that is
 @native_decide@ compiling and running the @safe@/@complete@ validators
-against the 480-state automaton. This is a one-time cost cacheable in
-@.lake/@.
+against the 480-state automaton; the *runtime* parser is O(n) in input
+length (~0.24 s on an 84k-token L0 input).  Build cost is a one-time
+hit cacheable in @.lake/@.
 
-Dependencies: requires LeanMenhir at @main@ ≥ commit @f3715cea@
-(the jump-tree action-dispatcher fix that makes BNFC-sized grammars
-elaborate). The emitted @lakefile.toml@ @path@-requires LeanMenhir from
-a fixed local checkout; switch to a @git@ require for distribution.
+Dependencies: requires LeanMenhir at @main@ ≥ commit @31bbad44@
+(the O(1) token buffer + de-Mathlib-refactor; the jump-tree action-
+dispatcher fix from earlier is also included).  The emitted
+@lakefile.toml@ @path@-requires LeanMenhir from a fixed local checkout;
+switch to a @git@ require for distribution.  Generated projects no
+longer depend on Mathlib, so @lake exe cache get@ is no longer needed.
 -}
 
 module BNFC.Backend.LeanMenhir ( makeLeanMenhir ) where
@@ -119,17 +122,18 @@ lakefileContent opts = unlines
   , "defaultTargets = [\"" ++ exeName ++ "\"]"
   , ""
   , "# LeanMenhir provides the verified LR(1) parser interpreter + SLR(1)"
-  , "# table generator.  It transitively depends on Mathlib; run"
-  , "# `lake exe cache get` once after `lake update` to download prebuilt"
-  , "# Mathlib oleans (otherwise Mathlib builds from source, very slow)."
+  , "# table generator.  As of the de-Mathlib refactor it has NO Mathlib"
+  , "# dependency, so no `lake exe cache get` is needed; `lake build` alone"
+  , "# is enough.  (`lake update` is needed once to fetch LeanMenhir's only"
+  , "# remaining transitive dep, `repl`, which it keeps for LSP tooling.)"
   , "[[require]]"
   , "name = \"LeanMenhir\""
   , "path = \"" ++ leanMenhirLocalPath ++ "\""
   , "# Or, for distribution, replace with a git require pinned to a known-good"
   , "# commit.  The BNFC emitter currently expects the API surface as of"
-  , "# leanmenhir-commit f3715cea5e39c56cf447daa4efb98835e6fac6d1 or newer:"
+  , "# leanmenhir-commit 31bbad4411855c0ac1a2211c207b4bb69e5ebe3e or newer:"
   , "# git  = \"https://github.com/GZGavinZhao/LeanMenhir.git\""
-  , "# rev  = \"f3715cea5e39c56cf447daa4efb98835e6fac6d1\""
+  , "# rev  = \"31bbad4411855c0ac1a2211c207b4bb69e5ebe3e\""
   , ""
   , "[[lean_lib]]"
   , "name = \"" ++ projectName ++ "\""
@@ -161,9 +165,10 @@ makefile :: SharedOptions -> String -> Doc
 makefile opts _basename = vcat $ map text
   [ "all: build"
   , ""
-  , "# First-time setup: download Mathlib oleans (much faster than building from source)."
+  , "# One-time setup: fetch LeanMenhir's transitive deps (just `repl`,"
+  , "# which LeanMenhir keeps for its own LSP tooling)."
   , "setup:"
-  , "\tlake exe cache get"
+  , "\tlake update"
   , ""
   , "build:"
   , "\tlake build"
