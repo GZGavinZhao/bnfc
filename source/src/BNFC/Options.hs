@@ -63,7 +63,7 @@ data Mode
 data Target = TargetC | TargetCpp | TargetCppNoStl
             | TargetHaskell | TargetHaskellGadt | TargetLatex
             | TargetJava | TargetOCaml | TargetPygments
-            | TargetTreeSitter | TargetLean
+            | TargetTreeSitter | TargetLean | TargetLeanMenhir
             | TargetCheck
   deriving (Eq, Bounded, Enum, Ord)
 
@@ -83,6 +83,7 @@ instance Show Target where
   show TargetPygments     = "Pygments"
   show TargetTreeSitter   = "Tree-sitter"
   show TargetLean         = "Lean"
+  show TargetLeanMenhir   = "Lean (LeanMenhir verified LR)"
   show TargetCheck        = "Check LBNF file"
 
 -- | Which version of Alex is targeted?
@@ -297,6 +298,7 @@ printTargetOption = ("--" ++) . \case
   TargetPygments    -> "pygments"
   TargetTreeSitter  -> "tree-sitter"
   TargetLean        -> "lean"
+  TargetLeanMenhir  -> "leanmenhir"
   TargetCheck       -> "check"
 
 printAlexOption :: AlexVersion -> String
@@ -354,6 +356,8 @@ targetOptions =
     "Output grammar.js file for use with tree-sitter"
   , Option "" ["lean"]          (NoArg (\o -> o {target = TargetLean}))
     "Output Lean 4 code (self-contained parser, no external dependencies)"
+  , Option "" ["leanmenhir"]    (NoArg (\o -> o {target = TargetLeanMenhir}))
+    "Output Lean 4 code using the verified LeanMenhir LR(1) parser (depends on LeanMenhir + Mathlib)"
   , Option "" ["check"]         (NoArg (\ o -> o{target = TargetCheck }))
     "No output. Just check input LBNF file"
   ]
@@ -578,6 +582,7 @@ instance Maintained Target where
     TargetPygments    -> True
     TargetTreeSitter  -> True
     TargetLean        -> True
+    TargetLeanMenhir  -> True
     TargetCheck       -> True
 
 instance Maintained AlexVersion where

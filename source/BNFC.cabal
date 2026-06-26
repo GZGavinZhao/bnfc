@@ -288,6 +288,10 @@ library
     BNFC.Backend.Lean.CFtoLeanTest
     BNFC.Backend.Lean.LeanUtil
 
+    -- LeanMenhir backend (verified LR(1) Lean parser)
+    BNFC.Backend.LeanMenhir
+    BNFC.Backend.LeanMenhir.CFtoLeanMenhirPar
+
 ----- Testing --------------------------------------------------------------
 
 test-suite unit-tests

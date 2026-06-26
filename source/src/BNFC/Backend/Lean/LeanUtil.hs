@@ -14,6 +14,11 @@ module BNFC.Backend.Lean.LeanUtil
     absLeanFile, absLeanModule
   , lexLeanFile, lexLeanModule
   , parLeanFile, parLeanModule
+    -- ** Split-parser modules (used only by the LeanMenhir backend, but live
+    --    here so the path/module conventions stay in one place).
+  , parTablesLeanFile, parTablesLeanModule
+  , parSafeLeanFile,   parSafeLeanModule
+  , parCompleteLeanFile, parCompleteLeanModule
   , printLeanFile, printLeanModule
   , skelLeanFile, skelLeanModule
   , testLeanFile, testLeanModule
@@ -51,26 +56,37 @@ withLang :: SharedOptions -> String -> String
 withLang opts base = base ++ cap (lang opts)
 
 absLeanModule, lexLeanModule, parLeanModule,
+  parTablesLeanModule, parSafeLeanModule, parCompleteLeanModule,
   printLeanModule, skelLeanModule, testLeanModule,
   runtimeLeanModule :: SharedOptions -> String
-absLeanModule     = (`withLang` "Abs")
-lexLeanModule     = (`withLang` "Lex")
-parLeanModule     = (`withLang` "Par")
-printLeanModule   = (`withLang` "Print")
-skelLeanModule    = (`withLang` "Skel")
-testLeanModule    = (`withLang` "Test")
-runtimeLeanModule = const "ParserRuntime"
+absLeanModule         = (`withLang` "Abs")
+lexLeanModule         = (`withLang` "Lex")
+parLeanModule         = (`withLang` "Par")
+-- Note: these read as @ParCalcTables@ / @ParCalcSafe@ / @ParCalcComplete@
+-- (i.e. @Par<LANG><Suffix>@) — using the @parLeanModule@ name plus a
+-- direct suffix so the language sits in the middle, not at the end.
+parTablesLeanModule   opts = parLeanModule opts ++ "Tables"
+parSafeLeanModule     opts = parLeanModule opts ++ "Safe"
+parCompleteLeanModule opts = parLeanModule opts ++ "Complete"
+printLeanModule       = (`withLang` "Print")
+skelLeanModule        = (`withLang` "Skel")
+testLeanModule        = (`withLang` "Test")
+runtimeLeanModule     = const "ParserRuntime"
 
 absLeanFile, lexLeanFile, parLeanFile,
+  parTablesLeanFile, parSafeLeanFile, parCompleteLeanFile,
   printLeanFile, skelLeanFile, testLeanFile,
   runtimeLeanFile :: SharedOptions -> FilePath
-absLeanFile     opts = absLeanModule     opts ++ ".lean"
-lexLeanFile     opts = lexLeanModule     opts ++ ".lean"
-parLeanFile     opts = parLeanModule     opts ++ ".lean"
-printLeanFile   opts = printLeanModule   opts ++ ".lean"
-skelLeanFile    opts = skelLeanModule    opts ++ ".lean"
-testLeanFile    opts = testLeanModule    opts ++ ".lean"
-runtimeLeanFile opts = runtimeLeanModule opts ++ ".lean"
+absLeanFile         opts = absLeanModule         opts ++ ".lean"
+lexLeanFile         opts = lexLeanModule         opts ++ ".lean"
+parLeanFile         opts = parLeanModule         opts ++ ".lean"
+parTablesLeanFile   opts = parTablesLeanModule   opts ++ ".lean"
+parSafeLeanFile     opts = parSafeLeanModule     opts ++ ".lean"
+parCompleteLeanFile opts = parCompleteLeanModule opts ++ ".lean"
+printLeanFile       opts = printLeanModule       opts ++ ".lean"
+skelLeanFile        opts = skelLeanModule        opts ++ ".lean"
+testLeanFile        opts = testLeanModule        opts ++ ".lean"
+runtimeLeanFile     opts = runtimeLeanModule     opts ++ ".lean"
 
 -- | Path of @lakefile.toml@ (relative to the output dir).
 lakeFile :: FilePath

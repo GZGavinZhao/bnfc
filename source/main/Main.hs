@@ -25,6 +25,7 @@ import BNFC.Backend.HaskellGADT ( makeHaskellGadt )
 import BNFC.Backend.Java ( makeJava )
 import BNFC.Backend.Latex ( makeLatex )
 import BNFC.Backend.Lean ( makeLean )
+import BNFC.Backend.LeanMenhir ( makeLeanMenhir )
 import BNFC.Backend.OCaml ( makeOCaml )
 import BNFC.Backend.Pygments ( makePygments )
 import BNFC.Backend.TreeSitter ( makeTreeSitter )
@@ -88,3 +89,4 @@ maketarget = \case
     TargetCheck        -> error "impossible"
     TargetTreeSitter   -> makeTreeSitter
     TargetLean         -> makeLean
+    TargetLeanMenhir   -> makeLeanMenhir
