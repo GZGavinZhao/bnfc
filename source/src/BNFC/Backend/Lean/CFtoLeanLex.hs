@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 {- |
 Module      : BNFC.Backend.Lean.CFtoLeanLex
 Description : Generate a hand-rolled longest-match lexer in Lean 4.
@@ -11,13 +13,17 @@ Strategy:
   * For each step, try in order:
       1. integer / float literals;
       2. string and character literals;
-      3. identifiers and reserved words (the latter take precedence);
-      4. punctuation symbols (sorted by descending length).
+      3. user-defined @token@ regex pragmas (longest match wins
+         among them; reserved-word fallback when the matched lexeme
+         is also a keyword);
+      4. identifiers and reserved words (the latter take precedence);
+      5. punctuation symbols (sorted by descending length).
   * If nothing matches, return a parse error with the offending position.
 
-User-defined @token@ pragmas are not yet supported by this backend; if
-the grammar contains any, BNFC emits a comment in the lexer and the
-generated parser will reject programs that rely on them.
+User-defined @token@ pragmas are compiled into closed @BNFC.Reg@
+literals via the runtime's regex matcher
+('BNFC.Backend.Lean.CFtoLeanRuntime.runtimeContent').  See the runtime
+docstring for the matcher's semantics.
 -}
 
 module BNFC.Backend.Lean.CFtoLeanLex ( cf2Lex ) where
@@ -25,6 +31,7 @@ module BNFC.Backend.Lean.CFtoLeanLex ( cf2Lex ) where
 import Data.List ( sortBy )
 import Data.Ord  ( Down(..), comparing )
 
+import BNFC.Abs  ( Reg(..) )
 import BNFC.CF
 import BNFC.Backend.Lean.LeanUtil ()
 
@@ -45,9 +52,10 @@ cf2Lex modName runtimeMod cf = unlines $ concat
   , [ "" ]
   , [ commentDataBlock blockComments lineComments ]
   , [ "" ]
+  , [ userTokensBlock userTokens ]
+  , [ "" ]
   , [ helpersBlock ]
   , [ "" ]
-  , userTokensWarning (tokenPragmas cf)
   , [ tokenizeBlock ]
   , [ ""
     , "end " ++ modName
@@ -57,6 +65,7 @@ cf2Lex modName runtimeMod cf = unlines $ concat
     (blockComments, lineComments) = comments cf
     keywords      = reservedWords cf
     sortedSymbols = sortBy (comparing (Down . length)) (cfgSymbols cf)
+    userTokens    = tokenPragmas cf
 
 ----------------------------------------------------------------------------
 -- Static data
@@ -273,20 +282,62 @@ helpersBlock = unlines
   ]
 
 ----------------------------------------------------------------------------
--- User-defined token warning
+-- User-defined `token` pragmas
 ----------------------------------------------------------------------------
 
-userTokensWarning :: [(TokenCat, a)] -> [String]
-userTokensWarning [] = []
-userTokensWarning tps =
-  [ "/- WARNING: this grammar declares user-defined `token` pragma(s)"
-  , "  for the following categories:"
-  , "    " ++ unwords (map fst tps)
-  , "  The Lean backend does not yet implement regex-based user token"
-  , "  matchers; programs relying on these tokens may fail to lex.  Open"
-  , "  an issue at https://github.com/BNFC/bnfc/issues if you need this. -/"
-  , ""
+-- | Emit the per-grammar `userTokens : List (String × BNFC.Reg)` table.
+--   Each entry is a `(category name, regex literal)` pair, in declaration
+--   order (which BNFC's convention says wins on length ties).  The lexer
+--   loop runs @BNFC.matchUserToks userTokens@ at every input position;
+--   the longest user-token match is preferred over `Ident`/`Integer`/
+--   `Float` matchers, with a reserved-word fallback so that words like
+--   @inf@ still lex as keywords when the grammar declares them as such.
+userTokensBlock :: [(TokenCat, Reg)] -> String
+userTokensBlock toks = unlines $
+  [ "/-- User-defined @token@ pragmas, in declaration order. -/"
+  , "private def userTokens : List (String × BNFC.Reg) :="
+  , "  ["
+  ] ++ withTrailingCommas (map renderEntry toks) ++
+  [ "  ]"
   ]
+  where
+    renderEntry (cat, r) =
+      "    (" ++ show cat ++ ", " ++ regToLeanExpr r ++ ")"
+
+    withTrailingCommas :: [String] -> [String]
+    withTrailingCommas []     = []
+    withTrailingCommas [x]    = [x]
+    withTrailingCommas (x:xs) = (x ++ ",") : withTrailingCommas xs
+
+-- | Render a BNFC `Reg` value as a Lean expression of type `BNFC.Reg`.
+--   Mirrors the constructor names in the runtime's `inductive Reg`.
+regToLeanExpr :: Reg -> String
+regToLeanExpr = \case
+  REps        -> ".eps"
+  RChar c     -> "(.char " ++ leanCharLit c ++ ")"
+  RAlts s     -> "(.alts " ++ leanCharList s ++ ")"
+  RSeqs s     -> "(.seqs " ++ show s ++ ")"
+  RDigit      -> ".digit"
+  RLetter     -> ".letter"
+  RUpper      -> ".upper"
+  RLower      -> ".lower"
+  RAny        -> ".anyCh"
+  RSeq a b    -> "(.seq "   ++ regToLeanExpr a ++ " " ++ regToLeanExpr b ++ ")"
+  RAlt a b    -> "(.alt "   ++ regToLeanExpr a ++ " " ++ regToLeanExpr b ++ ")"
+  RStar a     -> "(.star "  ++ regToLeanExpr a ++ ")"
+  RPlus a     -> "(.plus "  ++ regToLeanExpr a ++ ")"
+  ROpt a      -> "(.opt "   ++ regToLeanExpr a ++ ")"
+  RMinus a b  -> "(.minus " ++ regToLeanExpr a ++ " " ++ regToLeanExpr b ++ ")"
+  where
+    leanCharLit c = "'" ++ escapeChar c ++ "'"
+    leanCharList s = "[" ++ intercalateStr ", " (map leanCharLit s) ++ "]"
+    -- Escape characters that have special meaning inside a Lean Char literal.
+    escapeChar '\'' = "\\'"
+    escapeChar '\\' = "\\\\"
+    escapeChar '\n' = "\\n"
+    escapeChar '\t' = "\\t"
+    escapeChar '\r' = "\\r"
+    escapeChar c    = [c]
 
 ----------------------------------------------------------------------------
 -- Main tokenize loop
@@ -304,6 +355,23 @@ tokenizeBlock = unlines
   , "    match cs with"
   , "    | [] => .ok acc.reverse"
   , "    | c :: _ =>"
+  , "      -- 1. Try user-defined `token` pragmas first.  They take priority"
+  , "      --    over the built-in number/ident matchers, BUT a matched"
+  , "      --    lexeme that also happens to be a reserved word loses to the"
+  , "      --    keyword interpretation (this preserves BNFC's usual"
+  , "      --    \"reserved words beat identifiers\" semantics)."
+  , "      let userResult :="
+  , "        match BNFC.matchUserToks userTokens cs with"
+  , "        | some (cat, lex, cs') =>"
+  , "            if reserved.contains lex then none"
+  , "            else                          some (cat, lex, cs')"
+  , "        | none => none"
+  , "      match userResult with"
+  , "      | some (cat, lex, cs') =>"
+  , "          let p' := advanceN cs p lex.length"
+  , "          loop cs' p' ({ kind := .userTok cat lex, pos := p } :: acc)"
+  , "      | none =>"
+  , "      -- 2. Fall through to the built-in pipeline."
   , "      match matchNumber cs with"
   , "      | some (Sum.inl n, cs', len) =>"
   , "          let p' := advanceN cs p len"
